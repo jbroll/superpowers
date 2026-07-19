@@ -256,6 +256,36 @@ See `skills/writing-skills/SKILL.md` for the complete guide.
 
 Superpowers updates are somewhat coding-agent dependent, but are often automatic.
 
+## Fork maintenance (jbroll customization)
+
+**This is a fork of [obra/superpowers](https://github.com/obra/superpowers).** It carries one local
+customization on top of upstream: **per-task model annotation**. Because Claude Code accepts a
+`model` parameter directly on subagent dispatch, plans pick a model *tier* per task instead of
+inheriting the (usually most-expensive) session model:
+
+- `writing-plans` — every task carries a `Model:` field + a "Model per task" rubric
+  (`haiku` = mechanical/complete-spec, `sonnet` = integration/judgment (the floor),
+  `opus` = design/subtle-correctness/security/final-review).
+- `subagent-driven-development` — honors the plan's per-task `Model:` when dispatching each implementer.
+- `dispatching-parallel-agents` — the same rubric + "pass `model` explicitly" for ad-hoc fan-out.
+
+Our exact customization is always `git log upstream/main..main` (a fork with cache edits would drift
+invisibly — this keeps it version-controlled and measurable).
+
+**Install this fork** (Claude Code): `/plugin marketplace add jbroll/superpowers` then
+`/plugin install superpowers@superpowers-dev` (and `/plugin uninstall superpowers@claude-plugins-official`
+to drop the stock copy).
+
+**Sync onto a new upstream release** — rebases our commit onto the latest upstream and force-pushes:
+
+```bash
+scripts/sync-upstream.sh
+```
+
+It refuses on a dirty tree or the wrong branch, prints the customization before and after, and stops
+with clear instructions if an upstream change conflicts with our edit. After it runs, update the
+plugin from `/plugin`.
+
 ## License
 
 MIT License - see LICENSE file for details
