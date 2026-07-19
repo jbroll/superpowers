@@ -86,6 +86,10 @@ include this section.]
 - Modify: `exact/path/to/existing.py:123-145`
 - Test: `tests/exact/path/to/test.py`
 
+**Model:** `haiku` | `sonnet` | `opus` — one-line reason. The executor dispatches this task's
+implementer on this model automatically; pick the least-powerful tier that fits (see **Model per
+task** below).
+
 **Interfaces:**
 - Consumes: [what this task uses from earlier tasks — exact signatures]
 - Produces: [what later tasks rely on — exact function names, parameter
@@ -124,6 +128,23 @@ git add tests/path/test.py src/path/file.py
 git commit -m "feat: add specific feature"
 ```
 ````
+
+## Model per task
+
+Every task carries a `**Model:**` tier so execution dispatches it on the right model automatically —
+never inheriting the (usually most-expensive) session default. Pick the LEAST-powerful tier that fits:
+
+- **`haiku`** — mechanical: 1–2 files, and the step text already contains the complete code/edit to
+  make (transcription + testing), single-file fixes, doc/format/config edits.
+- **`sonnet`** — integration/judgment: multi-file coordination, pattern-matching, review, debugging,
+  or implementing from prose rather than verbatim code. **This is the floor** — do not drop below it
+  for anything not fully spelled out.
+- **`opus`** — design/architecture, broad-codebase reasoning, subtle correctness/security/data-safety,
+  and the final whole-branch review.
+
+Turn count beats token price: the cheapest tier routinely takes 2–3× the turns on multi-step prose
+work, costing more overall — hence `sonnet` as the floor above. When unsure between two tiers, pick
+the cheaper; the executor escalates if the implementer reports the task is under-specified.
 
 ## No Placeholders
 

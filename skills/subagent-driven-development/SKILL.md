@@ -100,6 +100,10 @@ conflicts that only emerge from implementation.
 
 Use the least powerful model that can handle each role to conserve cost and increase speed.
 
+**Honor the plan's per-task `Model:` annotation.** writing-plans stamps every task with a `Model:`
+tier — dispatch that task's implementer on it. The signals below are how the plan author chose that
+tier, and the fallback when a task has no annotation.
+
 **Mechanical implementation tasks** (isolated functions, clear specs, 1-2 files): use a fast, cheap model. Most implementation tasks are mechanical when the plan is well-specified.
 
 **Integration and judgment tasks** (multi-file coordination, pattern matching, debugging): use a standard model.
