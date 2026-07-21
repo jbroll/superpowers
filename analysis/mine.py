@@ -411,17 +411,20 @@ def render_plot(summaries, height=16, barw=3, trailing=8):
         if not d:
             continue
         y, w, _ = date.fromisoformat(d).isocalendar()
-        b = wk.setdefault(f"{y}-W{w:02d}", {"spec": 0, "plan": 0, "exec": 0, "n": 0})
+        b = wk.setdefault(f"{y}-W{w:02d}",
+                          {"spec": 0, "plan": 0, "exec": 0, "replan": 0, "n": 0})
         b["spec"] += _phase_tokens(s["phases"]["spec"])
         b["plan"] += _phase_tokens(s["phases"]["plan"])
         b["exec"] += _phase_tokens(s["phases"]["execute"])
+        b["replan"] += _phase_tokens(s["phases"]["replan"])
         b["n"] += 1
     weeks = sorted(wk)
     if not weeks:
         print("(no dated sessions to plot)")
         return
 
-    tot = {w: wk[w]["spec"] + wk[w]["plan"] + wk[w]["exec"] for w in weeks}
+    tot = {w: wk[w]["spec"] + wk[w]["plan"] + wk[w]["exec"] + wk[w]["replan"]
+           for w in weeks}
     mx = max(tot.values()) or 1
 
     # Per-FEATURE effectiveness: group sessions by artifact slug, compute each
@@ -470,13 +473,15 @@ def render_plot(summaries, height=16, barw=3, trailing=8):
     stacks, effrow = {}, {}
     for w in weeks:
         trows = round(height * tot[w] / mx)
-        sp, pl, ex = _split_rows([wk[w]["spec"], wk[w]["plan"], wk[w]["exec"]], trows)
-        stacks[w] = (sp, pl, ex)
+        sp, pl, ex, rp = _split_rows(
+            [wk[w]["spec"], wk[w]["plan"], wk[w]["exec"], wk[w]["replan"]], trows)
+        stacks[w] = (sp, pl, ex, rp)
         e = eff[w]
         effrow[w] = round(height * e / maxeff) if e is not None else -1
 
     slot = barw + 2  # bar + marker lane + gap
-    print(f"Weekly tokens by phase   (░ spec/brainstorm  ▒ plan/writing  █ execute)")
+    print("Weekly tokens by phase   ░ spec  ▒ plan  █ execute  "
+          "▓ replan (ad-hoc mid-build planning)")
     print(f"◆ = trailing-{trailing} median (spec+plan)/execute tokens per feature "
           f"— planning per unit build\n"
           f"  right axis 0..{maxeff:.2f}x, lower = leaner. Zero-exec features excluded "
@@ -486,13 +491,15 @@ def render_plot(summaries, height=16, barw=3, trailing=8):
                                                      height // 2, height // 4) else ""
         line = f"{ylab:>7} │"
         for w in weeks:
-            sp, pl, ex = stacks[w]
+            sp, pl, ex, rp = stacks[w]
             if row <= sp:
                 ch = "░"
             elif row <= sp + pl:
                 ch = "▒"
             elif row <= sp + pl + ex:
                 ch = "█"
+            elif row <= sp + pl + ex + rp:
+                ch = "▓"
             else:
                 ch = " "
             mk = "◆" if row == effrow[w] and effrow[w] > 0 else " "
@@ -507,6 +514,9 @@ def render_plot(summaries, height=16, barw=3, trailing=8):
           + "  ← features started")
     print(" " * 8 + "".join(f"sx={suspect[w]}".center(slot) for w in weeks)
           + "  ← zero-exec (excluded)")
+    print(" " * 8 + "".join(
+        (f"{100 * wk[w]['replan'] / tot[w]:.0f}%" if tot[w] else "0%").center(slot)
+        for w in weeks) + "  ← replan % of tokens")
     print(" " * 8 + "".join(f"n={wk[w]['n']}".center(slot) for w in weeks)
           + "  ← sessions")
 
