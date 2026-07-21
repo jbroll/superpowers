@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Mine Claude Code session logs into per-phase size/cost stats.
+"""Mine Claude Code session logs into per-phase token/cost stats. See README.md.
 
-Phase = which superpowers skill is active (spec/plan/execute), detected from
-`Skill` tool_use calls. Subagent tokens roll up into the active phase. Cost is
-derived cache-aware from prices.json (no cost field exists in the logs).
-
-The per-(session x phase) attribution here is the primitive; grouping sessions
-into features (by gitBranch + time) is a layer on top (see group_features).
+Phases (other/spec/plan/execute/replan) are attributed per TURN from what its tools
+do (attribute_phases_by_activity), not from skill boundaries. Usage is deduped by
+(message.id, requestId); subagent tokens roll up into the active phase; cost is
+derived cache-aware and date-effective from prices.json. Sessions group into
+features by artifact slug (group_features). attribute_phases (skill-boundary) is
+kept as the older, less reliable variant.
 """
 import json
 import os

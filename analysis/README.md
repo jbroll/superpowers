@@ -1,60 +1,99 @@
 # Usage Analysis
 
-Fork-local tooling to track the size, cost, and phase breakdown of real Claude Code
-sessions — so we can observe the effect of the superpowers mods on actual development
-without running explicit evals. **Not for upstream** (fork-specific).
+Fork-local tooling to track the tokens, cost, and phase breakdown of real Claude Code
+sessions — to observe the superpowers mods' effect on actual development without running
+explicit evals. **Not for upstream** (fork-specific).
 
-## What it measures
+## Usage
 
-Per session, split into **phases** (spec / plan / execute), each with:
+```sh
+FILES=(~/.claude/projects/*/*.jsonl)
 
-- **prompt size** — `input_tokens` + `cache_read_input_tokens` per turn
-- **tokens** — input / output / cache-create / cache-read
-- **cost** — derived, cache-aware (there is no cost field in the logs)
-- **subagent tokens** — rolled up into the phase active when the subagent was dispatched
-- **tool calls**, wall time
+# per-(session × phase) CSV
+python3 analysis/mine.py "${FILES[@]}"
 
-Then correlate upstream size (spec/plan) against downstream cost (execute) across
-features. See the effectiveness note below.
+# roll sessions up into features (grouped by spec/plan artifact slug)
+python3 analysis/mine.py --by-feature --only-superpowers "${FILES[@]}"
+
+# per-session time-series JSON
+python3 analysis/mine.py --timeline --only-superpowers "${FILES[@]}"
+
+# ASCII weekly stacked-phase chart (X=week, Y=tokens, effectiveness overlay)
+python3 analysis/mine.py --plot --only-superpowers "${FILES[@]}"
+python3 analysis/mine.py --plot --output --only-superpowers "${FILES[@]}"   # or --input / --total
+```
+
+Flags: `--only-superpowers` (keep only sessions that really used a superpowers skill or
+touched a spec/plan artifact — not the injected bootstrap mention), `--by-feature`,
+`--timeline`, `--plot`, and the plot metric `--total` (default) / `--output` / `--input`.
 
 ## Data source (no logging to enable)
 
-`~/.claude/projects/<encoded-cwd>/*.jsonl`. Confirmed present per assistant message:
-`message.usage` (`input_tokens`, `output_tokens`, `cache_creation_input_tokens`,
-`cache_read_input_tokens`), `message.model`, `timestamp`, `gitBranch`, `sessionId`.
-Subagent totals come from each `Agent` tool_result's `subagent_tokens`.
+`~/.claude/projects/<encoded-cwd>/*.jsonl` — the main session transcripts. Per assistant
+message: `message.usage` (input / output / cache_creation / cache_read tokens),
+`message.model`, `timestamp`, `gitBranch`. Subagent totals come from each `Agent`
+tool_result's `subagent_tokens`. Usage lines are **deduped** by `(message.id, requestId)`
+— Claude Code replays entries, and counting them inflates tokens ~1.6× (matches ccusage).
 
-## Phase detection
+## Phases — activity-based attribution
 
-Phase boundaries are `Skill` tool_use calls in the transcript:
+Phases are `other`, `spec`, `plan`, `execute`, `replan`. Each turn is classified by **what
+its tools do** (`classify_turn`), not by which skill was announced — skill-boundary
+attribution was unreliable because execution rarely announces itself (inline
+implementation after the plan, no execute skill). Tool-less/read-only turns inherit the
+adjacent phase.
 
-| Skill invoked | Phase |
+| Turn activity | Phase |
 |---|---|
-| `superpowers:brainstorming` | spec |
-| `superpowers:writing-plans` | plan |
-| `superpowers:subagent-driven-development`, `executing-plans`, `test-driven-development` | execute |
-| (before any of the above) | other |
+| Write/Edit a source file, test-run Bash, `Agent` dispatch, execute skill | execute |
+| Write/Edit `docs/superpowers/specs/…`, brainstorming skill | spec |
+| Write/Edit `docs/superpowers/plans/…`, writing-plans skill | plan |
+| Read-only / tool-less | inherit adjacent |
 
-Each turn's tokens are attributed to the phase in effect at that turn. Subagent
-tokens attach to the phase active at dispatch.
+**replan** = ad-hoc planning *in the middle of the build* — a spec/plan-flavored turn
+after execution began, **without** a brainstorming/writing-plans call. A formal
+brainstorming/writing-plans call mid-build is the opposite: a fresh, proper planning round
+(spec/plan), which resets the state. A state machine (`pre → planned → building`) drives
+this. High precision, low recall by design — routine plan-doc bookkeeping can't be told
+from a redesign via tool metadata, so replan requires the ad-hoc pattern; genuine
+redesigns done through the skills are counted as clean planning.
 
-## Cost derivation
+## Features
 
-`tokens × price[model]`, cache-aware: cache_read ≈ 0.1× input, cache_create ≈ 1.25×
-input, output at output rate. Prices live in `prices.json`, keyed by model id.
-Stale prices = wrong cost, so keep that file current.
+Sessions group into features by the **artifact slug** shared between a spec doc
+(`…-<slug>-design.md`) and its plan (`…-<slug>.md`), date-prefix and `-design` stripped.
+Robust to late/shared git branches and phases spanning sessions. Artifact-less sessions
+fall into `_unlinked`.
 
-## Automatable vs judgment
+## Cost — date-effective, cache-aware
 
-The **miner is deterministic and unit-tested** (fixture transcript + fixture git log →
-asserted table). The **effectiveness read is judgment** — a rise in execute cost may
-mean the spec was over-cut, or the feature was just harder. The pipeline surfaces
-candidates (e.g. spec shrank AND execute cost > 2× median); a human makes the call.
-Do not treat any output number as a verdict.
+`tokens × price[model]`, cache-aware (cache_read = 0.1× input, cache_write = 1.25× input).
+`prices.json` is **date-effective**: each model has entries sorted by `effective` date;
+a session prices with the entry effective at its date, historic sessions use the earliest
+(today's) entry, and future price changes are added going forward — never edit past
+entries. Cross-checked against `npx ccusage`. Opus 4.8 = $5/$25 per 1M (authoritative,
+2026-07-21).
+
+## Effectiveness — read as a proxy, not a verdict
+
+The `--plot` `◆` overlay is a trailing-N median of `(spec+plan)/execute` tokens per feature
+("planning per unit build"); zero-execution features are excluded as attribution-suspect.
+Honest limits, learned the hard way:
+
+- Planning-vs-execution ratios are dominated by **feature type** (a migration is
+  execution-heavy regardless of spec quality) — no calendar-time aggregate isolates
+  parsimony.
+- Token totals are **cache_read-dominated**, so the `--output` view is the parsimony-relevant
+  one (output is what the cut rules shrink); `--total` mostly shows cost.
+- The parsimony mods synced 2026-07-20, so the corpus is essentially all pre-mod — **no
+  measurable effect yet.**
+
+The clean signal for parsimony stays the controlled A/B and **per-feature-type** output
+comparison, not the timeline. Don't treat any single number as a verdict.
 
 ## Layout
 
-- `mine.py` — session JSONL → per-(session×phase) rows (CSV/JSON)
-- `prices.json` — model price table (cache-aware)
-- `tests/` — fixture transcripts + expected output
+- `mine.py` — attribution, feature grouping, pricing, CSV/JSON/ASCII output
+- `prices.json` — date-effective, cache-aware model prices
+- `tests/test_mine.py` — plain-assert unit tests (`python3 analysis/tests/test_mine.py`)
 - generated data (`*.csv`, `out/`) is gitignored
