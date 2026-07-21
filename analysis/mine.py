@@ -284,21 +284,47 @@ def render_plot(summaries, height=16, barw=3):
 
     tot = {w: wk[w]["spec"] + wk[w]["plan"] + wk[w]["exec"] for w in weeks}
     mx = max(tot.values()) or 1
-    # planning share % = (spec+plan)/total — the effectiveness proxy
-    eff = {w: (100 * (wk[w]["spec"] + wk[w]["plan"]) / tot[w]) if tot[w] else 0
-           for w in weeks}
-    # precompute each week's stacked rows (bottom→top: spec, plan, exec)
+
+    # Per-FEATURE effectiveness: group sessions by artifact slug, compute each
+    # feature's planning share, anchor it to the week it started, then average
+    # the features equal-weighted (so one huge feature can't dominate the line).
+    feat = {}
+    for s in summaries:
+        slugs = s.get("slugs") or {}
+        if not slugs:
+            continue
+        slug = max(slugs, key=lambda k: slugs[k])
+        d = (s["meta"].get("start") or "")[:10]
+        f = feat.setdefault(slug, {"spec": 0, "plan": 0, "exec": 0, "first": "9999-99-99"})
+        f["spec"] += _phase_tokens(s["phases"]["spec"])
+        f["plan"] += _phase_tokens(s["phases"]["plan"])
+        f["exec"] += _phase_tokens(s["phases"]["execute"])
+        if d and d < f["first"]:
+            f["first"] = d
+    shares = {w: [] for w in weeks}
+    for f in feat.values():
+        t = f["spec"] + f["plan"] + f["exec"]
+        if t <= 0 or f["first"] == "9999-99-99":
+            continue
+        y, w, _ = date.fromisoformat(f["first"]).isocalendar()
+        fw = f"{y}-W{w:02d}"
+        if fw in shares:
+            shares[fw].append(100 * (f["spec"] + f["plan"]) / t)
+    eff = {w: (sum(shares[w]) / len(shares[w])) if shares[w] else None for w in weeks}
+    nfeat = {w: len(shares[w]) for w in weeks}
+
     stacks, effrow = {}, {}
     for w in weeks:
         trows = round(height * tot[w] / mx)
         sp, pl, ex = _split_rows([wk[w]["spec"], wk[w]["plan"], wk[w]["exec"]], trows)
         stacks[w] = (sp, pl, ex)
-        effrow[w] = round(height * eff[w] / 100)
+        e = eff[w]
+        effrow[w] = round(height * e / 100) if e is not None else -1
 
     slot = barw + 2  # bar + marker lane + gap
     print(f"Weekly tokens by phase   (░ spec/brainstorm  ▒ plan/writing  █ execute)")
-    print(f"◆ = effectiveness proxy: planning share % of tokens, right axis 0-100% "
-          f"(lower = leaner)\n")
+    print(f"◆ = per-feature effectiveness: mean planning share % of features started "
+          f"that week\n  (equal-weighted; right axis 0-100%, lower = leaner planning)\n")
     for row in range(height, 0, -1):
         ylab = _human(mx * row / height) if row in (height, height * 3 // 4,
                                                      height // 2, height // 4) else ""
@@ -318,9 +344,13 @@ def render_plot(summaries, height=16, barw=3):
         print(line)
     print(f"{'0':>7} └" + "─" * (slot * len(weeks)))
     print(" " * 8 + "".join(f"{w[-3:]:^{slot}}" for w in weeks))
-    print(" " * 8 + "".join(f"{eff[w]:.0f}%".rjust(barw + 1).ljust(slot) for w in weeks)
-          + "  ← planning share")
-    print(" " * 8 + "".join(f"n={wk[w]['n']}".center(slot) for w in weeks))
+    print(" " * 8 + "".join((f"{eff[w]:.0f}%" if eff[w] is not None else "–")
+                            .rjust(barw + 1).ljust(slot) for w in weeks)
+          + "  ← per-feature planning share")
+    print(" " * 8 + "".join(f"nf={nfeat[w]}".center(slot) for w in weeks)
+          + "  ← features started")
+    print(" " * 8 + "".join(f"n={wk[w]['n']}".center(slot) for w in weeks)
+          + "  ← sessions")
 
 
 def main(argv):
