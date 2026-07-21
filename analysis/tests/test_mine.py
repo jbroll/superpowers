@@ -3,7 +3,7 @@
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from mine import (attribute_phases, normalize_slug, group_features, PHASES,  # noqa: E402
-                  _bucket, uses_superpowers)
+                  _bucket, uses_superpowers, resolve_prices)
 
 PRICES = {
     "m": {"input": 10.0, "output": 100.0, "cache_read": 1.0, "cache_write": 12.5, "blended": 20.0},
@@ -84,6 +84,21 @@ def test_uses_superpowers_requires_real_invocation():
     artifact = {"message": {"content": [{"type": "tool_use", "name": "Write",
                 "input": {"file_path": "docs/superpowers/specs/2026-07-20-x-design.md"}}]}}
     assert uses_superpowers([artifact])
+
+
+def test_resolve_prices_date_effective():
+    dated = {"m": [
+        {"effective": "2026-01-01", "input": 10.0},
+        {"effective": "2026-06-01", "input": 8.0},
+    ], "_comment": "ignored"}
+    # After a price change -> newer entry.
+    assert resolve_prices(dated, "2026-07-01T12:00:00Z")["m"]["input"] == 8.0
+    # Between the two -> the earlier-but-applicable entry.
+    assert resolve_prices(dated, "2026-03-15")["m"]["input"] == 10.0
+    # Before the earliest -> falls back to earliest (historic sessions priced at oldest known).
+    assert resolve_prices(dated, "2025-01-01")["m"]["input"] == 10.0
+    # Non-list keys (comments) are skipped.
+    assert "_comment" not in resolve_prices(dated, "2026-07-01")
 
 
 def test_normalize_slug():

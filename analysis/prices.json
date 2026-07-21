@@ -1,6 +1,10 @@
 {
-  "_comment": "USD per 1M tokens, cache-aware. Approximate — keep current. cache_read ~= 0.1x input, cache_write ~= 1.25x input.",
-  "claude-opus-4-8": { "input": 15.0, "output": 75.0, "cache_read": 1.5, "cache_write": 18.75, "blended": 30.0 },
-  "claude-sonnet-5": { "input": 3.0, "output": 15.0, "cache_read": 0.3, "cache_write": 3.75, "blended": 6.0 },
-  "claude-haiku-4-5-20251001": { "input": 1.0, "output": 5.0, "cache_read": 0.1, "cache_write": 1.25, "blended": 2.0 }
+  "_comment": "USD per 1M tokens, cache-aware, DATE-EFFECTIVE. Each model maps to a list of entries sorted ascending by `effective` (YYYY-MM-DD). A session is priced with the entry whose effective date is the latest <= the session's date; a session dated before the earliest entry uses the earliest entry (so all historic sessions get today's prices). When Anthropic changes a price, ADD a new dated entry going forward — never edit a past entry. Derivations: cache_read = 0.1x input, cache_write(5m) = 1.25x input, blended = input rate (subagent tokens are a lump we can't split in/out, so this is a conservative lower bound). Source: claude-api skill pricing table, 2026-07-21.",
+  "claude-opus-4-8":  [{"effective": "2026-07-21", "input": 5.0,  "output": 25.0, "cache_read": 0.5,  "cache_write": 6.25,  "blended": 5.0}],
+  "claude-opus-4-7":  [{"effective": "2026-07-21", "input": 5.0,  "output": 25.0, "cache_read": 0.5,  "cache_write": 6.25,  "blended": 5.0}],
+  "claude-opus-4-6":  [{"effective": "2026-07-21", "input": 5.0,  "output": 25.0, "cache_read": 0.5,  "cache_write": 6.25,  "blended": 5.0}],
+  "claude-fable-5":   [{"effective": "2026-07-21", "input": 10.0, "output": 50.0, "cache_read": 1.0,  "cache_write": 12.5,  "blended": 10.0}],
+  "claude-sonnet-5":  [{"effective": "2026-07-21", "input": 3.0,  "output": 15.0, "cache_read": 0.3,  "cache_write": 3.75,  "blended": 3.0}],
+  "claude-sonnet-4-6":[{"effective": "2026-07-21", "input": 3.0,  "output": 15.0, "cache_read": 0.3,  "cache_write": 3.75,  "blended": 3.0}],
+  "claude-haiku-4-5": [{"effective": "2026-07-21", "input": 1.0,  "output": 5.0,  "cache_read": 0.1,  "cache_write": 1.25,  "blended": 1.0}]
 }

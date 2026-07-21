@@ -155,10 +155,12 @@ def uses_superpowers(records):
     return False
 
 
-def summarize_session(path, prices):
+def summarize_session(path, dated_prices):
     recs = load_session(path)
+    meta = session_meta(recs)
+    prices = resolve_prices(dated_prices, meta.get("start"))  # contemporary pricing
     return {"id": os.path.basename(path).replace(".jsonl", ""),
-            "meta": session_meta(recs),
+            "meta": meta,
             "phases": attribute_phases(recs, prices),
             "slugs": session_artifacts(recs),
             "uses_sp": uses_superpowers(recs)}
@@ -188,6 +190,22 @@ def session_meta(records):
             first = first or ts
             last = ts
     return {"branch": branch, "start": first, "end": last}
+
+
+def resolve_prices(dated, date_str):
+    """Flatten a date-effective price table to {model: rates} for a given date.
+    Picks each model's entry with the latest `effective` <= date; a date before
+    the earliest entry falls back to the earliest (historic sessions get today's
+    prices). Pure."""
+    day = (date_str or "")[:10] or "9999-99-99"
+    flat = {}
+    for model, entries in dated.items():
+        if not isinstance(entries, list) or not entries:
+            continue
+        ordered = sorted(entries, key=lambda e: e["effective"])
+        applicable = [e for e in ordered if e["effective"] <= day]
+        flat[model] = applicable[-1] if applicable else ordered[0]
+    return flat
 
 
 def _load_prices():
@@ -236,7 +254,7 @@ def main(argv):
     for path in argv:
         recs = load_session(path)
         meta = session_meta(recs)
-        phases = attribute_phases(recs, prices)
+        phases = attribute_phases(recs, resolve_prices(prices, meta.get("start")))
         sid = os.path.basename(path).replace(".jsonl", "")
         for ph in PHASES:
             b = phases[ph]
