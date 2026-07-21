@@ -1,0 +1,5 @@
+# Generated analysis output may contain session content / costs — never commit it.
+*.csv
+out/
+data/
+__pycache__/

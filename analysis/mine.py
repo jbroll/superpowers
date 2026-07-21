@@ -1,0 +1,135 @@
+#!/usr/bin/env python3
+"""Mine Claude Code session logs into per-phase size/cost stats.
+
+Phase = which superpowers skill is active (spec/plan/execute), detected from
+`Skill` tool_use calls. Subagent tokens roll up into the active phase. Cost is
+derived cache-aware from prices.json (no cost field exists in the logs).
+
+The per-(session x phase) attribution here is the primitive; grouping sessions
+into features (by gitBranch + time) is a layer on top (see group_features).
+"""
+import json
+import os
+import re
+import sys
+
+SKILL_PHASE = {
+    "superpowers:brainstorming": "spec",
+    "superpowers:writing-plans": "plan",
+    "superpowers:subagent-driven-development": "execute",
+    "superpowers:executing-plans": "execute",
+    "superpowers:test-driven-development": "execute",
+}
+PHASES = ("other", "spec", "plan", "execute")
+_SUBTOK = re.compile(r"subagent_tokens:\s*(\d+)")
+
+
+def _bucket():
+    return {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0,
+            "subagent_tokens": 0, "tool_calls": 0, "cost": 0.0}
+
+
+def _msg_cost(model, i, o, cr, cw, prices):
+    p = prices.get(model)
+    if not p:
+        return 0.0
+    return (i * p["input"] + o * p["output"]
+            + cr * p["cache_read"] + cw * p["cache_write"]) / 1_000_000
+
+
+def attribute_phases(records, prices):
+    """records: ordered list of parsed JSONL objects for one session.
+    Returns {phase: bucket}. Pure — no I/O."""
+    out = {ph: _bucket() for ph in PHASES}
+    phase = "other"
+    model = None
+    for o in records:
+        msg = o.get("message") if isinstance(o.get("message"), dict) else {}
+        if msg.get("model"):
+            model = msg["model"]
+        content = msg.get("content") or []
+        for c in content:
+            if not isinstance(c, dict):
+                continue
+            if c.get("type") == "tool_use":
+                out[phase]["tool_calls"] += 1
+                if c.get("name") == "Skill":
+                    sk = (c.get("input") or {}).get("skill")
+                    if sk in SKILL_PHASE:
+                        phase = SKILL_PHASE[sk]
+            elif c.get("type") == "tool_result":
+                m = _SUBTOK.search(json.dumps(c.get("content")))
+                if m:
+                    tok = int(m.group(1))
+                    out[phase]["subagent_tokens"] += tok
+                    p = prices.get(model)
+                    if p:
+                        out[phase]["cost"] += tok * p["blended"] / 1_000_000
+        u = msg.get("usage")
+        if isinstance(u, dict):
+            i = u.get("input_tokens", 0)
+            oo = u.get("output_tokens", 0)
+            cr = u.get("cache_read_input_tokens", 0)
+            cw = u.get("cache_creation_input_tokens", 0)
+            b = out[phase]
+            b["input"] += i
+            b["output"] += oo
+            b["cache_read"] += cr
+            b["cache_write"] += cw
+            b["cost"] += _msg_cost(model, i, oo, cr, cw, prices)
+    return out
+
+
+def load_session(path):
+    recs = []
+    for line in open(path):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            recs.append(json.loads(line))
+        except json.JSONDecodeError:
+            pass
+    return recs
+
+
+def session_meta(records):
+    """Best-effort branch + time span for a session (for feature grouping)."""
+    branch, first, last = None, None, None
+    for o in records:
+        if o.get("gitBranch"):
+            branch = o["gitBranch"]
+        ts = o.get("timestamp")
+        if ts:
+            first = first or ts
+            last = ts
+    return {"branch": branch, "start": first, "end": last}
+
+
+def _load_prices():
+    here = os.path.dirname(os.path.abspath(__file__))
+    return json.load(open(os.path.join(here, "prices.json")))
+
+
+def main(argv):
+    if not argv:
+        print("usage: mine.py SESSION.jsonl [SESSION.jsonl ...]", file=sys.stderr)
+        return 2
+    prices = _load_prices()
+    print("session,branch,phase,input,output,cache_read,cache_write,subagent_tokens,tool_calls,cost_usd")
+    for path in argv:
+        recs = load_session(path)
+        meta = session_meta(recs)
+        phases = attribute_phases(recs, prices)
+        sid = os.path.basename(path).replace(".jsonl", "")
+        for ph in PHASES:
+            b = phases[ph]
+            if b["input"] or b["output"] or b["subagent_tokens"]:
+                print(f"{sid},{meta['branch']},{ph},{b['input']},{b['output']},"
+                      f"{b['cache_read']},{b['cache_write']},{b['subagent_tokens']},"
+                      f"{b['tool_calls']},{b['cost']:.4f}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
