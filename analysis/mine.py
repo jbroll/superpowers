@@ -350,6 +350,16 @@ def _phase_tokens(b):
             + b["cache_write"] + b["subagent_tokens"])
 
 
+def _metric_val(b, metric):
+    """Token count for a phase bucket under the chosen metric. input/output are
+    main-agent only (subagent tokens are an unsplittable lump, excluded there)."""
+    if metric == "output":
+        return b["output"]
+    if metric == "input":
+        return b["input"]
+    return _phase_tokens(b)   # "total": all token types incl. cache + subagent
+
+
 def timeline_rows(summaries):
     """Per-session records for a time series, sorted by start. Effectiveness
     proxy = spec+plan output tokens (planning verbosity: lower = leaner, the
@@ -401,7 +411,7 @@ def _split_rows(parts, total_rows):
     return base
 
 
-def render_plot(summaries, height=16, barw=3, trailing=8):
+def render_plot(summaries, height=16, barw=3, trailing=8, metric="total"):
     """Stacked weekly column chart: X=week, Y=tokens split by phase
     (spec/plan/execute), with the effectiveness proxy overlaid as a marker line
     on a secondary 0-100% axis. Pre-skill 'other' tokens are excluded."""
@@ -413,10 +423,10 @@ def render_plot(summaries, height=16, barw=3, trailing=8):
         y, w, _ = date.fromisoformat(d).isocalendar()
         b = wk.setdefault(f"{y}-W{w:02d}",
                           {"spec": 0, "plan": 0, "exec": 0, "replan": 0, "n": 0})
-        b["spec"] += _phase_tokens(s["phases"]["spec"])
-        b["plan"] += _phase_tokens(s["phases"]["plan"])
-        b["exec"] += _phase_tokens(s["phases"]["execute"])
-        b["replan"] += _phase_tokens(s["phases"]["replan"])
+        b["spec"] += _metric_val(s["phases"]["spec"], metric)
+        b["plan"] += _metric_val(s["phases"]["plan"], metric)
+        b["exec"] += _metric_val(s["phases"]["execute"], metric)
+        b["replan"] += _metric_val(s["phases"]["replan"], metric)
         b["n"] += 1
     weeks = sorted(wk)
     if not weeks:
@@ -438,9 +448,9 @@ def render_plot(summaries, height=16, barw=3, trailing=8):
         slug = max(slugs, key=lambda k: slugs[k])
         d = (s["meta"].get("start") or "")[:10]
         f = feat.setdefault(slug, {"spec": 0, "plan": 0, "exec": 0, "first": "9999-99-99"})
-        f["spec"] += _phase_tokens(s["phases"]["spec"])
-        f["plan"] += _phase_tokens(s["phases"]["plan"])
-        f["exec"] += _phase_tokens(s["phases"]["execute"])
+        f["spec"] += _metric_val(s["phases"]["spec"], metric)
+        f["plan"] += _metric_val(s["phases"]["plan"], metric)
+        f["exec"] += _metric_val(s["phases"]["execute"], metric)
         if d and d < f["first"]:
             f["first"] = d
     # Effectiveness proxy = (spec+plan)/execute tokens per feature ("planning per
@@ -480,7 +490,9 @@ def render_plot(summaries, height=16, barw=3, trailing=8):
         effrow[w] = round(height * e / maxeff) if e is not None else -1
 
     slot = barw + 2  # bar + marker lane + gap
-    print("Weekly tokens by phase   ░ spec  ▒ plan  █ execute  "
+    label = {"output": "OUTPUT tokens", "input": "INPUT tokens",
+             "total": "total tokens (incl. cache)"}[metric]
+    print(f"Weekly {label} by phase   ░ spec  ▒ plan  █ execute  "
           "▓ replan (ad-hoc mid-build planning)")
     print(f"◆ = trailing-{trailing} median (spec+plan)/execute tokens per feature "
           f"— planning per unit build\n"
@@ -523,6 +535,7 @@ def render_plot(summaries, height=16, barw=3, trailing=8):
 
 def main(argv):
     by_feature = only_sp = timeline = plot = False
+    metric = "total"
     while argv and argv[0].startswith("--"):
         flag = argv.pop(0)
         if flag == "--by-feature":
@@ -533,6 +546,8 @@ def main(argv):
             timeline = True
         elif flag == "--plot":
             plot = True
+        elif flag in ("--input", "--output", "--total"):
+            metric = flag[2:]
         else:
             print(f"unknown flag: {flag}", file=sys.stderr)
             return 2
@@ -551,7 +566,7 @@ def main(argv):
             summaries = kept
 
     if plot:
-        render_plot(summaries)
+        render_plot(summaries, metric=metric)
         return 0
 
     if timeline:
