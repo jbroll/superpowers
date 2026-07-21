@@ -133,17 +133,18 @@ def _skill_turn(name, o=0, id=None, rid=None):
                       "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}}}
 
 
-def test_replan_only_on_deliberate_planning_skill_mid_build():
+def test_replan_is_adhoc_planning_skill_call_is_fresh_round():
     records = [
         skill("superpowers:writing-plans"),                 # planned (no usage)
         _edit_turn("src/app.py", o=100, id="a", rid="1"),   # execute -> building
-        _skill_turn("superpowers:brainstorming", o=50, id="b", rid="2"),  # REPLAN (deliberate)
-        _edit_turn("docs/superpowers/plans/x.md", o=30, id="c", rid="3"),  # doc bookkeeping -> execute
-        _edit_turn("src/app.py", o=70, id="d", rid="4"),    # execute
+        _edit_turn("docs/superpowers/plans/x.md", o=50, id="b", rid="2"),  # ad-hoc plan edit -> REPLAN
+        _skill_turn("superpowers:brainstorming", o=40, id="c", rid="3"),   # fresh round -> spec (resets)
+        _edit_turn("src/app.py", o=70, id="d", rid="4"),    # execute (new round)
     ]
     ph = attribute_phases_by_activity(records, PRICES)
-    assert ph["replan"]["output"] == 50, ph["replan"]
-    assert ph["execute"]["output"] == 200, ph["execute"]   # 100 + 30(bookkeeping) + 70
+    assert ph["replan"]["output"] == 50, ph["replan"]      # ad-hoc mid-build planning
+    assert ph["spec"]["output"] == 40, ph["spec"]          # brainstorming = fresh round, not replan
+    assert ph["execute"]["output"] == 170, ph["execute"]   # 100 + 70
     assert ph["plan"]["output"] == 0, ph["plan"]
     # planning BEFORE execution is still plan, not replan
     pre = attribute_phases_by_activity(

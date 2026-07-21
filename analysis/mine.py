@@ -22,11 +22,10 @@ SKILL_PHASE = {
     "superpowers:test-driven-development": "execute",
 }
 PHASES = ("other", "spec", "plan", "execute", "replan")
-# "replan" = a DELIBERATE re-invocation of a planning skill (brainstorming /
-# writing-plans) after building began — a planning-failure signal. Routine doc
-# edits during the build loop (checking off tasks, re-reading the spec) are NOT
-# replan; tool metadata can't distinguish those from a redesign, so we require the
-# explicit planning-skill call as the high-precision signal.
+# "replan" = AD-HOC planning in the middle of the build WITHOUT a brainstorming/
+# writing-plans skill call — revising the design on the fly, a planning-failure
+# signal. A formal brainstorming/writing-plans call mid-build is the opposite: a
+# fresh, proper planning round (spec/plan), NOT replan — so it resets the state.
 _SUBTOK = re.compile(r"subagent_tokens:\s*(\d+)")
 
 
@@ -161,16 +160,25 @@ def attribute_phases_by_activity(records, prices):
             model = msg["model"]
         blocks = msg.get("content") or []
         vote = classify_turn(blocks)
-        planning_skill = any(
-            isinstance(c, dict) and c.get("type") == "tool_use"
-            and c.get("name") == "Skill"
-            and str((c.get("input") or {}).get("skill", "")) in (SPEC_SKILL, PLAN_SKILL)
-            for c in blocks)
-        if state == "building":
-            if planning_skill:
-                phase = "replan"       # deliberately re-opened planning mid-build
-            elif vote is not None:
-                phase = "execute"      # any tool work during build, incl. doc bookkeeping
+        skill_phase = None
+        for c in blocks:
+            if (isinstance(c, dict) and c.get("type") == "tool_use"
+                    and c.get("name") == "Skill"):
+                sk = str((c.get("input") or {}).get("skill", ""))
+                if sk == SPEC_SKILL:
+                    skill_phase = "spec"
+                elif sk == PLAN_SKILL:
+                    skill_phase = "plan"
+        if skill_phase is not None:
+            # Formal brainstorming/writing-plans = a fresh, proper planning round.
+            # Resets the build state; this is spec/plan, never replan.
+            phase = skill_phase
+            state = "planned"
+        elif state == "building":
+            if vote in ("spec", "plan"):
+                phase = "replan"       # ad-hoc mid-build planning, no skill call
+            elif vote == "execute":
+                phase = "execute"
             # vote None -> carry current phase
         elif vote == "execute":
             phase = "execute"
