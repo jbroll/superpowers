@@ -171,6 +171,14 @@ could plan from without going back to your human partner. Cover:
 `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`, committed.
 Otherwise, ask. Your human partner's preferences override both.
 
+**Cut padding:** every sentence must earn its place.
+
+- **Boilerplate test** (before writing): if a competent builder would get this right without being told, don't write it.
+- **Sentence test** (after writing): if removing a sentence changes nothing the reader learns, delete it. Apply hardest to the first and last sentence of each paragraph.
+- **Delete on sight:** "Note that", "It is important to", "This section describes/covers", "In order to X" → "To X", filler adverbs (generally/typically/usually/often), setup sentences ("There are three reasons"), closing restatements ("This is why X matters"), transition sentences carrying no information, any sentence restating a heading.
+- **Completeness test:** a section is done when two different phrasings would produce identical behavior, not when it is long or short.
+- Prefer active voice with a named agent, and specific over general ("retries three times with 500 ms backoff", not "retries as needed").
+
 **Builder check:** dispatch a fresh subagent with
 `builder-check-prompt.md` in this directory. When you tell your human
 partner you're writing it up, say a reviewer will read it first and you
