@@ -262,7 +262,7 @@ def _split_rows(parts, total_rows):
     return base
 
 
-def render_plot(summaries, height=16, barw=3):
+def render_plot(summaries, height=16, barw=3, trailing=8):
     """Stacked weekly column chart: X=week, Y=tokens split by phase
     (spec/plan/execute), with the effectiveness proxy overlaid as a marker line
     on a secondary 0-100% axis. Pre-skill 'other' tokens are excluded."""
@@ -301,17 +301,26 @@ def render_plot(summaries, height=16, barw=3):
         f["exec"] += _phase_tokens(s["phases"]["execute"])
         if d and d < f["first"]:
             f["first"] = d
-    shares = {w: [] for w in weeks}
+    pts, started = [], {w: 0 for w in weeks}
     for f in feat.values():
         t = f["spec"] + f["plan"] + f["exec"]
         if t <= 0 or f["first"] == "9999-99-99":
             continue
+        pts.append((f["first"], 100 * (f["spec"] + f["plan"]) / t))
         y, w, _ = date.fromisoformat(f["first"]).isocalendar()
         fw = f"{y}-W{w:02d}"
-        if fw in shares:
-            shares[fw].append(100 * (f["spec"] + f["plan"]) / t)
-    eff = {w: (sum(shares[w]) / len(shares[w])) if shares[w] else None for w in weeks}
-    nfeat = {w: len(shares[w]) for w in weeks}
+        if fw in started:
+            started[fw] += 1
+    pts.sort()
+    # Trailing-N: at each week, mean planning share of the last N features that
+    # had started by that week's end — smooths regardless of how features clump.
+    eff = {}
+    for w in weeks:
+        cutoff = date.fromisocalendar(int(w[:4]), int(w[6:]), 7)  # ISO week Sunday
+        eligible = [sh for d, sh in pts if date.fromisoformat(d) <= cutoff]
+        window = eligible[-trailing:]
+        eff[w] = (sum(window) / len(window)) if window else None
+    nfeat = started
 
     stacks, effrow = {}, {}
     for w in weeks:
@@ -323,8 +332,9 @@ def render_plot(summaries, height=16, barw=3):
 
     slot = barw + 2  # bar + marker lane + gap
     print(f"Weekly tokens by phase   (░ spec/brainstorm  ▒ plan/writing  █ execute)")
-    print(f"◆ = per-feature effectiveness: mean planning share % of features started "
-          f"that week\n  (equal-weighted; right axis 0-100%, lower = leaner planning)\n")
+    print(f"◆ = effectiveness: trailing-{trailing} mean planning share % "
+          f"(last {trailing} features by start date)\n"
+          f"  right axis 0-100%, lower = leaner planning\n")
     for row in range(height, 0, -1):
         ylab = _human(mx * row / height) if row in (height, height * 3 // 4,
                                                      height // 2, height // 4) else ""
@@ -346,7 +356,7 @@ def render_plot(summaries, height=16, barw=3):
     print(" " * 8 + "".join(f"{w[-3:]:^{slot}}" for w in weeks))
     print(" " * 8 + "".join((f"{eff[w]:.0f}%" if eff[w] is not None else "–")
                             .rjust(barw + 1).ljust(slot) for w in weeks)
-          + "  ← per-feature planning share")
+          + f"  ← trailing-{trailing} planning share")
     print(" " * 8 + "".join(f"nf={nfeat[w]}".center(slot) for w in weeks)
           + "  ← features started")
     print(" " * 8 + "".join(f"n={wk[w]['n']}".center(slot) for w in weeks)
