@@ -242,6 +242,14 @@ def timeline_rows(summaries):
     return rows
 
 
+def _median(xs):
+    s = sorted(xs)
+    n = len(s)
+    if not n:
+        return None
+    return s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2
+
+
 def _human(n):
     if n >= 1_000_000:
         return f"{n / 1_000_000:.1f}M"
@@ -301,26 +309,32 @@ def render_plot(summaries, height=16, barw=3, trailing=8):
         f["exec"] += _phase_tokens(s["phases"]["execute"])
         if d and d < f["first"]:
             f["first"] = d
-    pts, started = [], {w: 0 for w in weeks}
+    # Effectiveness proxy = (spec+plan)/execute tokens per feature ("planning per
+    # unit build"). Zero-execution features are attribution-suspect (sticky phase:
+    # brainstorm/plan fired but no execute skill) — excluded, counted separately.
+    pts, started, suspect = [], {w: 0 for w in weeks}, {w: 0 for w in weeks}
     for f in feat.values():
-        t = f["spec"] + f["plan"] + f["exec"]
-        if t <= 0 or f["first"] == "9999-99-99":
+        if f["first"] == "9999-99-99":
             continue
-        pts.append((f["first"], 100 * (f["spec"] + f["plan"]) / t))
         y, w, _ = date.fromisoformat(f["first"]).isocalendar()
         fw = f"{y}-W{w:02d}"
         if fw in started:
             started[fw] += 1
+        p, e = f["spec"] + f["plan"], f["exec"]
+        if e <= 0:
+            if fw in suspect:
+                suspect[fw] += 1
+            continue
+        pts.append((f["first"], p / e))
     pts.sort()
-    # Trailing-N: at each week, mean planning share of the last N features that
-    # had started by that week's end — smooths regardless of how features clump.
+    # Trailing-N: at each week, MEDIAN ratio of the last N features started by then.
     eff = {}
     for w in weeks:
         cutoff = date.fromisocalendar(int(w[:4]), int(w[6:]), 7)  # ISO week Sunday
-        eligible = [sh for d, sh in pts if date.fromisoformat(d) <= cutoff]
-        window = eligible[-trailing:]
-        eff[w] = (sum(window) / len(window)) if window else None
+        window = [r for d, r in pts if date.fromisoformat(d) <= cutoff][-trailing:]
+        eff[w] = _median(window)
     nfeat = started
+    maxeff = max([e for e in eff.values() if e is not None], default=1) or 1
 
     stacks, effrow = {}, {}
     for w in weeks:
@@ -328,13 +342,14 @@ def render_plot(summaries, height=16, barw=3, trailing=8):
         sp, pl, ex = _split_rows([wk[w]["spec"], wk[w]["plan"], wk[w]["exec"]], trows)
         stacks[w] = (sp, pl, ex)
         e = eff[w]
-        effrow[w] = round(height * e / 100) if e is not None else -1
+        effrow[w] = round(height * e / maxeff) if e is not None else -1
 
     slot = barw + 2  # bar + marker lane + gap
     print(f"Weekly tokens by phase   (░ spec/brainstorm  ▒ plan/writing  █ execute)")
-    print(f"◆ = effectiveness: trailing-{trailing} mean planning share % "
-          f"(last {trailing} features by start date)\n"
-          f"  right axis 0-100%, lower = leaner planning\n")
+    print(f"◆ = trailing-{trailing} median (spec+plan)/execute tokens per feature "
+          f"— planning per unit build\n"
+          f"  right axis 0..{maxeff:.2f}x, lower = leaner. Zero-exec features excluded "
+          f"(attribution-suspect)\n")
     for row in range(height, 0, -1):
         ylab = _human(mx * row / height) if row in (height, height * 3 // 4,
                                                      height // 2, height // 4) else ""
@@ -354,11 +369,13 @@ def render_plot(summaries, height=16, barw=3, trailing=8):
         print(line)
     print(f"{'0':>7} └" + "─" * (slot * len(weeks)))
     print(" " * 8 + "".join(f"{w[-3:]:^{slot}}" for w in weeks))
-    print(" " * 8 + "".join((f"{eff[w]:.0f}%" if eff[w] is not None else "–")
+    print(" " * 8 + "".join((f"{eff[w]:.2f}" if eff[w] is not None else "–")
                             .rjust(barw + 1).ljust(slot) for w in weeks)
-          + f"  ← trailing-{trailing} planning share")
+          + f"  ← trailing-{trailing} plan/exec ratio")
     print(" " * 8 + "".join(f"nf={nfeat[w]}".center(slot) for w in weeks)
           + "  ← features started")
+    print(" " * 8 + "".join(f"sx={suspect[w]}".center(slot) for w in weeks)
+          + "  ← zero-exec (excluded)")
     print(" " * 8 + "".join(f"n={wk[w]['n']}".center(slot) for w in weeks)
           + "  ← sessions")
 
