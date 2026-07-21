@@ -12,6 +12,7 @@ import json
 import os
 import re
 import sys
+from datetime import date
 
 SKILL_PHASE = {
     "superpowers:brainstorming": "spec",
@@ -213,14 +214,89 @@ def _load_prices():
     return json.load(open(os.path.join(here, "prices.json")))
 
 
+def _phase_tokens(b):
+    return (b["input"] + b["output"] + b["cache_read"]
+            + b["cache_write"] + b["subagent_tokens"])
+
+
+def timeline_rows(summaries):
+    """Per-session records for a time series, sorted by start. Effectiveness
+    proxy = spec+plan output tokens (planning verbosity: lower = leaner, the
+    thing the parsimony mods target). Labelled a proxy, not a verdict."""
+    rows = []
+    for s in summaries:
+        ph = s["phases"]
+        slugs = s.get("slugs") or {}
+        rows.append({
+            "date": (s["meta"].get("start") or "")[:10],
+            "id": s["id"],
+            "slug": max(slugs, key=lambda k: slugs[k]) if slugs else "",
+            "total_cost": round(sum(ph[p]["cost"] for p in PHASES), 2),
+            "total_tokens": sum(_phase_tokens(ph[p]) for p in PHASES),
+            "spec_cost": round(ph["spec"]["cost"], 2),
+            "plan_cost": round(ph["plan"]["cost"], 2),
+            "exec_cost": round(ph["execute"]["cost"], 2),
+            "planning_out_tokens": ph["spec"]["output"] + ph["plan"]["output"],
+        })
+    rows.sort(key=lambda r: (r["date"], r["id"]))
+    return rows
+
+
+def _human(n):
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M"
+    if n >= 1_000:
+        return f"{n / 1_000:.0f}k"
+    return str(int(n))
+
+
+def render_plot(summaries, width=44):
+    """ASCII timeline: cost / tokens / planning-verbosity bucketed by ISO week."""
+    rows = [r for r in timeline_rows(summaries) if r["date"]]
+    if not rows:
+        print("(no dated sessions to plot)")
+        return
+    buckets = {}
+    for r in rows:
+        y, w, _ = date.fromisoformat(r["date"]).isocalendar()
+        wk = f"{y}-W{w:02d}"
+        b = buckets.setdefault(wk, {"cost": 0.0, "tokens": 0, "plan": 0, "n": 0})
+        b["cost"] += r["total_cost"]
+        b["tokens"] += r["total_tokens"]
+        b["plan"] += r["planning_out_tokens"]
+        b["n"] += 1
+    weeks = sorted(buckets)
+
+    def chart(title, key, fmt):
+        vals = [buckets[w][key] for w in weeks]
+        mx = max(vals) or 1
+        print(f"\n{title}")
+        for w in weeks:
+            v = buckets[w][key]
+            filled = round(width * v / mx)
+            bar = "█" * filled + "·" * (width - filled)
+            print(f"  {w}  {bar}  {fmt(v)}  (n={buckets[w]['n']})")
+
+    print(f"Superpowers usage timeline — {len(rows)} sessions, "
+          f"{weeks[0]}..{weeks[-1]}, weekly buckets")
+    chart("Cost / week  (USD, notional API-equivalent)", "cost", lambda v: f"${v:,.0f}")
+    chart("Tokens / week", "tokens", _human)
+    chart("Planning verbosity / week  (spec+plan output tokens — PROXY, lower = leaner)",
+          "plan", _human)
+
+
 def main(argv):
-    by_feature = only_sp = False
+    by_feature = only_sp = timeline = plot = False
     while argv and argv[0].startswith("--"):
         flag = argv.pop(0)
         if flag == "--by-feature":
             by_feature = True
         elif flag == "--only-superpowers":
             only_sp = True
+        elif flag == "--timeline":
+            timeline = True
+        elif flag == "--plot":
+            plot = True
         else:
             print(f"unknown flag: {flag}", file=sys.stderr)
             return 2
@@ -228,14 +304,25 @@ def main(argv):
         print("usage: mine.py [--by-feature] [--only-superpowers] SESSION.jsonl ...", file=sys.stderr)
         return 2
     prices = _load_prices()
+    summaries = []
 
-    if by_feature:
+    if by_feature or timeline or plot:
         summaries = [summarize_session(p, prices) for p in argv]
         if only_sp:
             kept = [s for s in summaries if s["uses_sp"]]
             print(f"# {len(kept)}/{len(summaries)} sessions use superpowers "
                   f"({len(summaries) - len(kept)} excluded)", file=sys.stderr)
             summaries = kept
+
+    if plot:
+        render_plot(summaries)
+        return 0
+
+    if timeline:
+        print(json.dumps(timeline_rows(summaries), indent=2))
+        return 0
+
+    if by_feature:
         feats = group_features(summaries)
         print("feature,n_sessions,spec_cost,plan_cost,exec_cost,total_cost,spec_out_tok,plan_out_tok,exec_out_tok")
         rows = []
