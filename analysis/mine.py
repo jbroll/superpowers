@@ -250,39 +250,77 @@ def _human(n):
     return str(int(n))
 
 
-def render_plot(summaries, width=44):
-    """ASCII timeline: cost / tokens / planning-verbosity bucketed by ISO week."""
-    rows = [r for r in timeline_rows(summaries) if r["date"]]
-    if not rows:
+def _split_rows(parts, total_rows):
+    """Split total_rows across parts proportionally (largest-remainder)."""
+    tot = sum(parts) or 1
+    raw = [p / tot * total_rows for p in parts]
+    base = [int(x) for x in raw]
+    short = total_rows - sum(base)
+    order = sorted(range(len(parts)), key=lambda i: raw[i] - base[i], reverse=True)
+    for i in order[:short]:
+        base[i] += 1
+    return base
+
+
+def render_plot(summaries, height=16, barw=3):
+    """Stacked weekly column chart: X=week, Y=tokens split by phase
+    (spec/plan/execute), with the effectiveness proxy overlaid as a marker line
+    on a secondary 0-100% axis. Pre-skill 'other' tokens are excluded."""
+    wk = {}
+    for s in summaries:
+        d = (s["meta"].get("start") or "")[:10]
+        if not d:
+            continue
+        y, w, _ = date.fromisoformat(d).isocalendar()
+        b = wk.setdefault(f"{y}-W{w:02d}", {"spec": 0, "plan": 0, "exec": 0, "n": 0})
+        b["spec"] += _phase_tokens(s["phases"]["spec"])
+        b["plan"] += _phase_tokens(s["phases"]["plan"])
+        b["exec"] += _phase_tokens(s["phases"]["execute"])
+        b["n"] += 1
+    weeks = sorted(wk)
+    if not weeks:
         print("(no dated sessions to plot)")
         return
-    buckets = {}
-    for r in rows:
-        y, w, _ = date.fromisoformat(r["date"]).isocalendar()
-        wk = f"{y}-W{w:02d}"
-        b = buckets.setdefault(wk, {"cost": 0.0, "tokens": 0, "plan": 0, "n": 0})
-        b["cost"] += r["total_cost"]
-        b["tokens"] += r["total_tokens"]
-        b["plan"] += r["planning_out_tokens"]
-        b["n"] += 1
-    weeks = sorted(buckets)
 
-    def chart(title, key, fmt):
-        vals = [buckets[w][key] for w in weeks]
-        mx = max(vals) or 1
-        print(f"\n{title}")
+    tot = {w: wk[w]["spec"] + wk[w]["plan"] + wk[w]["exec"] for w in weeks}
+    mx = max(tot.values()) or 1
+    # planning share % = (spec+plan)/total — the effectiveness proxy
+    eff = {w: (100 * (wk[w]["spec"] + wk[w]["plan"]) / tot[w]) if tot[w] else 0
+           for w in weeks}
+    # precompute each week's stacked rows (bottom→top: spec, plan, exec)
+    stacks, effrow = {}, {}
+    for w in weeks:
+        trows = round(height * tot[w] / mx)
+        sp, pl, ex = _split_rows([wk[w]["spec"], wk[w]["plan"], wk[w]["exec"]], trows)
+        stacks[w] = (sp, pl, ex)
+        effrow[w] = round(height * eff[w] / 100)
+
+    slot = barw + 2  # bar + marker lane + gap
+    print(f"Weekly tokens by phase   (░ spec/brainstorm  ▒ plan/writing  █ execute)")
+    print(f"◆ = effectiveness proxy: planning share % of tokens, right axis 0-100% "
+          f"(lower = leaner)\n")
+    for row in range(height, 0, -1):
+        ylab = _human(mx * row / height) if row in (height, height * 3 // 4,
+                                                     height // 2, height // 4) else ""
+        line = f"{ylab:>7} │"
         for w in weeks:
-            v = buckets[w][key]
-            filled = round(width * v / mx)
-            bar = "█" * filled + "·" * (width - filled)
-            print(f"  {w}  {bar}  {fmt(v)}  (n={buckets[w]['n']})")
-
-    print(f"Superpowers usage timeline — {len(rows)} sessions, "
-          f"{weeks[0]}..{weeks[-1]}, weekly buckets")
-    chart("Cost / week  (USD, notional API-equivalent)", "cost", lambda v: f"${v:,.0f}")
-    chart("Tokens / week", "tokens", _human)
-    chart("Planning verbosity / week  (spec+plan output tokens — PROXY, lower = leaner)",
-          "plan", _human)
+            sp, pl, ex = stacks[w]
+            if row <= sp:
+                ch = "░"
+            elif row <= sp + pl:
+                ch = "▒"
+            elif row <= sp + pl + ex:
+                ch = "█"
+            else:
+                ch = " "
+            mk = "◆" if row == effrow[w] and effrow[w] > 0 else " "
+            line += ch * barw + mk + " "
+        print(line)
+    print(f"{'0':>7} └" + "─" * (slot * len(weeks)))
+    print(" " * 8 + "".join(f"{w[-3:]:^{slot}}" for w in weeks))
+    print(" " * 8 + "".join(f"{eff[w]:.0f}%".rjust(barw + 1).ljust(slot) for w in weeks)
+          + "  ← planning share")
+    print(" " * 8 + "".join(f"n={wk[w]['n']}".center(slot) for w in weeks))
 
 
 def main(argv):
