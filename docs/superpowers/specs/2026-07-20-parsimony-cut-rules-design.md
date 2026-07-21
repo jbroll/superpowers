@@ -53,6 +53,13 @@ from being written, and a post-write test that removes what was written anyway.
 Harvest the transferable rules from ai-roller's `specification` skill. Take the rules,
 not the plumbing.
 
+**No word cap.** Use every word the content requires and no more. Length is the
+outcome of the cut rules, not a target we set. The existing 200-300 word figure stays
+as a ceiling; every section then passes through the cut rules, so a 300-word draft is
+cut to whatever earns its place — sometimes a third of that, occasionally the full 300
+when the content is genuinely that dense. Completeness is judged by the completeness
+test below, never by length in either direction.
+
 Rules to port:
 - **Boilerplate test** (before writing): if a competent implementer would get it right
   without being told, delete it.
@@ -67,9 +74,9 @@ Rules to port:
 - **Voice**: active voice with a named agent; specific over general.
 
 Placement:
-- `brainstorming`: tighten the "up to 200-300 words" lever (line ~84) and add the cut
-  rules to the spec self-review (lines ~112-117), so padding is removed before the
-  user review gate.
+- `brainstorming`: keep the "up to 200-300 words" ceiling (line ~84) but subordinate
+  it to the cut rules, and add the cut rules to the spec self-review (lines ~112-117),
+  so padding is removed from each section before the user review gate.
 - `writing-plans`: add the cut rules to the plan self-review pass.
 
 Do **not** import: `air check`, Route Skill references, parent-`index.md`-vs-leaf
