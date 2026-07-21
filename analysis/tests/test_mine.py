@@ -10,8 +10,8 @@ PRICES = {
 }
 
 
-def asst(model, i=0, o=0, cr=0, cw=0):
-    return {"message": {"model": model, "usage": {
+def asst(model, i=0, o=0, cr=0, cw=0, id=None, rid=None):
+    return {"requestId": rid, "message": {"model": model, "id": id, "usage": {
         "input_tokens": i, "output_tokens": o,
         "cache_read_input_tokens": cr, "cache_creation_input_tokens": cw}}}
 
@@ -57,6 +57,18 @@ def test_cache_aware_cost():
     phases = attribute_phases(records, PRICES)
     # 100*10 + 1000*1 + 200*12.5 = 1000 + 1000 + 2500 = 4500 micro-usd => 0.0045
     assert abs(phases["spec"]["cost"] - 0.0045) < 1e-9, phases["spec"]["cost"]
+
+
+def test_dedup_replayed_usage_lines():
+    # Claude Code replays entries; same (id, requestId) must count once.
+    records = [
+        skill("superpowers:brainstorming"),
+        asst("m", o=100, id="msg_1", rid="req_1"),
+        asst("m", o=100, id="msg_1", rid="req_1"),   # duplicate -> ignored
+        asst("m", o=100, id="msg_2", rid="req_2"),   # distinct -> counted
+    ]
+    phases = attribute_phases(records, PRICES)
+    assert phases["spec"]["output"] == 200, phases["spec"]["output"]
 
 
 def test_uses_superpowers_requires_real_invocation():

@@ -39,10 +39,14 @@ def _msg_cost(model, i, o, cr, cw, prices):
 
 def attribute_phases(records, prices):
     """records: ordered list of parsed JSONL objects for one session.
-    Returns {phase: bucket}. Pure — no I/O."""
+    Returns {phase: bucket}. Pure — no I/O.
+
+    Usage lines are deduped by (message.id, requestId): Claude Code replays
+    duplicate entries, and counting them inflates tokens/cost (matches ccusage)."""
     out = {ph: _bucket() for ph in PHASES}
     phase = "other"
     model = None
+    seen = set()
     for o in records:
         msg = o.get("message") if isinstance(o.get("message"), dict) else {}
         if msg.get("model"):
@@ -67,6 +71,11 @@ def attribute_phases(records, prices):
                         out[phase]["cost"] += tok * p["blended"] / 1_000_000
         u = msg.get("usage")
         if isinstance(u, dict):
+            uid = (msg.get("id"), o.get("requestId"))
+            if uid != (None, None):
+                if uid in seen:
+                    continue
+                seen.add(uid)
             i = u.get("input_tokens", 0)
             oo = u.get("output_tokens", 0)
             cr = u.get("cache_read_input_tokens", 0)
