@@ -80,6 +80,81 @@ def attribute_phases(records, prices):
     return out
 
 
+_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}-")
+_ARTIFACT = ("docs/superpowers/specs/", "docs/superpowers/plans/")
+
+
+def normalize_slug(filename):
+    """Feature key shared by a spec and its plan, robust to differing date
+    prefixes and the spec's `-design` suffix."""
+    s = filename[:-3] if filename.endswith(".md") else filename
+    s = _DATE.sub("", s)
+    if s.endswith("-design"):
+        s = s[:-len("-design")]
+    return s
+
+
+def session_artifacts(records):
+    """{slug: touch_count} for spec/plan docs the session read or wrote."""
+    slugs = {}
+    for o in records:
+        msg = o.get("message") if isinstance(o.get("message"), dict) else {}
+        for c in (msg.get("content") or []):
+            if not (isinstance(c, dict) and c.get("type") == "tool_use"):
+                continue
+            if c.get("name") not in ("Read", "Write", "Edit"):
+                continue
+            fp = (c.get("input") or {}).get("file_path", "") or ""
+            if any(a in fp for a in _ARTIFACT):
+                slug = normalize_slug(fp.split("/")[-1])
+                slugs[slug] = slugs.get(slug, 0) + 1
+    return slugs
+
+
+def group_features(sessions):
+    """Group per-session summaries into features keyed on artifact slug.
+    A session's primary feature is the slug it touched most; artifact-less
+    sessions fall into `_unlinked`. Phase buckets sum across a feature's
+    sessions (so spec/plan/execute spanning restarts reconstruct into one row)."""
+    feats = {}
+    for s in sessions:
+        slugs = s.get("slugs") or {}
+        key = max(slugs, key=lambda k: slugs[k]) if slugs else "_unlinked"
+        f = feats.setdefault(key, {"sessions": [],
+                                    "phases": {ph: _bucket() for ph in PHASES}})
+        f["sessions"].append(s["id"])
+        for ph in PHASES:
+            for k, v in s["phases"][ph].items():
+                f["phases"][ph][k] += v
+    return feats
+
+
+def uses_superpowers(records):
+    """True iff the session actually invoked a superpowers skill or touched a
+    superpowers artifact. NOT mere mention — the SessionStart hook injects the
+    `superpowers:` bootstrap into every session, so string presence is not a
+    signal; an actual `Skill` tool_use is."""
+    if session_artifacts(records):
+        return True
+    for o in records:
+        msg = o.get("message") if isinstance(o.get("message"), dict) else {}
+        for c in (msg.get("content") or []):
+            if (isinstance(c, dict) and c.get("type") == "tool_use"
+                    and c.get("name") == "Skill"):
+                if str((c.get("input") or {}).get("skill", "")).startswith("superpowers:"):
+                    return True
+    return False
+
+
+def summarize_session(path, prices):
+    recs = load_session(path)
+    return {"id": os.path.basename(path).replace(".jsonl", ""),
+            "meta": session_meta(recs),
+            "phases": attribute_phases(recs, prices),
+            "slugs": session_artifacts(recs),
+            "uses_sp": uses_superpowers(recs)}
+
+
 def load_session(path):
     recs = []
     for line in open(path):
@@ -112,10 +187,42 @@ def _load_prices():
 
 
 def main(argv):
+    by_feature = only_sp = False
+    while argv and argv[0].startswith("--"):
+        flag = argv.pop(0)
+        if flag == "--by-feature":
+            by_feature = True
+        elif flag == "--only-superpowers":
+            only_sp = True
+        else:
+            print(f"unknown flag: {flag}", file=sys.stderr)
+            return 2
     if not argv:
-        print("usage: mine.py SESSION.jsonl [SESSION.jsonl ...]", file=sys.stderr)
+        print("usage: mine.py [--by-feature] [--only-superpowers] SESSION.jsonl ...", file=sys.stderr)
         return 2
     prices = _load_prices()
+
+    if by_feature:
+        summaries = [summarize_session(p, prices) for p in argv]
+        if only_sp:
+            kept = [s for s in summaries if s["uses_sp"]]
+            print(f"# {len(kept)}/{len(summaries)} sessions use superpowers "
+                  f"({len(summaries) - len(kept)} excluded)", file=sys.stderr)
+            summaries = kept
+        feats = group_features(summaries)
+        print("feature,n_sessions,spec_cost,plan_cost,exec_cost,total_cost,spec_out_tok,plan_out_tok,exec_out_tok")
+        rows = []
+        for slug, f in feats.items():
+            ph = f["phases"]
+            total = sum(ph[p]["cost"] for p in PHASES)
+            rows.append((total, slug, len(f["sessions"]),
+                         ph["spec"]["cost"], ph["plan"]["cost"], ph["execute"]["cost"], total,
+                         ph["spec"]["output"], ph["plan"]["output"], ph["execute"]["output"]))
+        for r in sorted(rows, reverse=True):
+            _, slug, n, sc, pc, ec, tc, so, po, eo = r
+            print(f"{slug},{n},{sc:.4f},{pc:.4f},{ec:.4f},{tc:.4f},{so},{po},{eo}")
+        return 0
+
     print("session,branch,phase,input,output,cache_read,cache_write,subagent_tokens,tool_calls,cost_usd")
     for path in argv:
         recs = load_session(path)
