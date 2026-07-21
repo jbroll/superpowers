@@ -3,7 +3,8 @@
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from mine import (attribute_phases, normalize_slug, group_features, PHASES,  # noqa: E402
-                  _bucket, uses_superpowers, resolve_prices)
+                  _bucket, uses_superpowers, resolve_prices,
+                  classify_turn, attribute_phases_by_activity)
 
 PRICES = {
     "m": {"input": 10.0, "output": 100.0, "cache_read": 1.0, "cache_write": 12.5, "blended": 20.0},
@@ -84,6 +85,45 @@ def test_uses_superpowers_requires_real_invocation():
     artifact = {"message": {"content": [{"type": "tool_use", "name": "Write",
                 "input": {"file_path": "docs/superpowers/specs/2026-07-20-x-design.md"}}]}}
     assert uses_superpowers([artifact])
+
+
+def _tu(name, **inp):
+    return {"type": "tool_use", "name": name, "input": inp}
+
+
+def _edit_turn(path, o=0, id=None, rid=None):
+    return {"requestId": rid, "message": {"model": "m", "id": id,
+            "content": [_tu("Edit", file_path=path)],
+            "usage": {"input_tokens": 0, "output_tokens": o,
+                      "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}}}
+
+
+def test_classify_turn_by_activity():
+    assert classify_turn([_tu("Edit", file_path="src/app.py")]) == "execute"
+    assert classify_turn([_tu("Write", file_path="docs/superpowers/plans/y.md")]) == "plan"
+    assert classify_turn([_tu("Skill", skill="superpowers:brainstorming")]) == "spec"
+    assert classify_turn([_tu("Bash", command="pytest -q")]) == "execute"
+    assert classify_turn([_tu("Bash", command="git commit -m x")]) is None  # commit ≠ execute
+    assert classify_turn([_tu("Read", file_path="src/app.py")]) is None      # read-only
+    # priority: authoring source beats a spec-doc touch in the same turn
+    assert classify_turn([_tu("Write", file_path="docs/superpowers/specs/z.md"),
+                          _tu("Bash", command="pytest")]) == "execute"
+
+
+def test_activity_attribution_beats_sticky_skill():
+    # writing-plans fires, then implementation happens INLINE (no execute skill).
+    records = [
+        skill("superpowers:writing-plans"),
+        asst("m", o=100, id="a", rid="1"),        # tool-less -> carries 'plan'
+        _edit_turn("src/app.py", o=200, id="b", rid="2"),   # edits source -> execute
+        _edit_turn("src/app.py", o=300, id="c", rid="3"),
+    ]
+    ph = attribute_phases_by_activity(records, PRICES)
+    assert ph["plan"]["output"] == 100, ph["plan"]
+    assert ph["execute"]["output"] == 500, ph["execute"]
+    # the old skill-boundary attribution would have dumped all 500 into 'plan':
+    old = attribute_phases(records, PRICES)
+    assert old["plan"]["output"] == 600 and old["execute"]["output"] == 0
 
 
 def test_resolve_prices_date_effective():

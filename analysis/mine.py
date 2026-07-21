@@ -90,6 +90,106 @@ def attribute_phases(records, prices):
     return out
 
 
+SPEC_SKILL = "superpowers:brainstorming"
+PLAN_SKILL = "superpowers:writing-plans"
+EXEC_SKILLS = {"superpowers:subagent-driven-development",
+               "superpowers:executing-plans", "superpowers:test-driven-development"}
+# Bash commands that mean "building/verifying code" (execution). NOT git (commits
+# happen in every phase — a spec commit is not execution).
+_EXEC_BASH = re.compile(
+    r"\b(pytest|jest|vitest|bun test|go test|cargo (test|build|run)|"
+    r"npm (test|run test|run build|start)|make|tsc|mvn|gradle|"
+    r"python[0-9.]* -m pytest|\./gradlew)\b")
+
+
+def classify_turn(blocks):
+    """Phase of one assistant turn from what its tools DO, not which skill was
+    announced. Priority execute > plan > spec; returns None for tool-less or
+    read-only turns (caller carries the phase from adjacent turns)."""
+    votes = set()
+    for c in blocks:
+        if not (isinstance(c, dict) and c.get("type") == "tool_use"):
+            continue
+        name = c.get("name")
+        inp = c.get("input") or {}
+        if name == "Skill":
+            sk = str(inp.get("skill", ""))
+            if sk == SPEC_SKILL:
+                votes.add("spec")
+            elif sk == PLAN_SKILL:
+                votes.add("plan")
+            elif sk in EXEC_SKILLS:
+                votes.add("execute")
+        elif name in ("Write", "Edit"):
+            fp = inp.get("file_path", "") or ""
+            if "docs/superpowers/specs/" in fp:
+                votes.add("spec")
+            elif "docs/superpowers/plans/" in fp:
+                votes.add("plan")
+            else:                       # authoring any other file = building
+                votes.add("execute")
+        elif name == "Agent":
+            votes.add("execute")
+        elif name == "Bash":
+            if _EXEC_BASH.search(inp.get("command", "") or ""):
+                votes.add("execute")
+    for ph in ("execute", "plan", "spec"):  # priority
+        if ph in votes:
+            return ph
+    return None
+
+
+def attribute_phases_by_activity(records, prices):
+    """Activity-based attribution: each turn's phase comes from its own tool use
+    (classify_turn); tool-less/read-only turns inherit the last classified phase.
+    Fixes the sticky-skill problem — inline implementation lands in execute even
+    when no execute skill was invoked. Same dedup + subagent rollup as
+    attribute_phases. Pure."""
+    out = {ph: _bucket() for ph in PHASES}
+    phase = "other"
+    model = None
+    seen = set()
+    for o in records:
+        msg = o.get("message") if isinstance(o.get("message"), dict) else {}
+        if msg.get("model"):
+            model = msg["model"]
+        blocks = msg.get("content") or []
+        vote = classify_turn(blocks)
+        if vote:
+            phase = vote
+        for c in blocks:
+            if not isinstance(c, dict):
+                continue
+            if c.get("type") == "tool_use":
+                out[phase]["tool_calls"] += 1
+            elif c.get("type") == "tool_result":
+                m = _SUBTOK.search(json.dumps(c.get("content")))
+                if m:
+                    tok = int(m.group(1))
+                    out[phase]["subagent_tokens"] += tok
+                    p = prices.get(model)
+                    if p:
+                        out[phase]["cost"] += tok * p["blended"] / 1_000_000
+        u = msg.get("usage")
+        if isinstance(u, dict):
+            uid = (msg.get("id"), o.get("requestId"))
+            if uid != (None, None):
+                if uid in seen:
+                    continue
+                seen.add(uid)
+            i = u.get("input_tokens", 0)
+            oo = u.get("output_tokens", 0)
+            cr = u.get("cache_read_input_tokens", 0)
+            cw = u.get("cache_creation_input_tokens", 0)
+            b = out[phase]
+            b["input"] += i
+            b["output"] += oo
+            b["cache_read"] += cr
+            b["cache_write"] += cw
+            b["cost"] += _msg_cost(model, i, oo, cr, cw, prices)
+    return out
+
+
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}-")
 _ARTIFACT = ("docs/superpowers/specs/", "docs/superpowers/plans/")
 
@@ -162,7 +262,7 @@ def summarize_session(path, dated_prices):
     prices = resolve_prices(dated_prices, meta.get("start"))  # contemporary pricing
     return {"id": os.path.basename(path).replace(".jsonl", ""),
             "meta": meta,
-            "phases": attribute_phases(recs, prices),
+            "phases": attribute_phases_by_activity(recs, prices),
             "slugs": session_artifacts(recs),
             "uses_sp": uses_superpowers(recs)}
 
@@ -436,7 +536,7 @@ def main(argv):
     for path in argv:
         recs = load_session(path)
         meta = session_meta(recs)
-        phases = attribute_phases(recs, resolve_prices(prices, meta.get("start")))
+        phases = attribute_phases_by_activity(recs, resolve_prices(prices, meta.get("start")))
         sid = os.path.basename(path).replace(".jsonl", "")
         for ph in PHASES:
             b = phases[ph]
