@@ -9,6 +9,8 @@ description: Use when implementing any feature or bugfix, before writing impleme
 
 Write the test first. Watch it fail. Write minimal code to pass.
 
+**Before writing the code that passes:** invoke `superpowers:code-parsimony`. "Minimal code to pass" means its ladder — reuse existing → stdlib → native → installed dep → one line → minimal — not the first thing that works.
+
 **Core principle:** If you didn't watch the test fail, you don't know if it tests the right thing.
 
 **Violating the letter of the rules is violating the spirit of the rules.**

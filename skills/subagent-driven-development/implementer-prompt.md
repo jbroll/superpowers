@@ -72,6 +72,15 @@ Subagent (general-purpose):
     - In existing codebases, follow established patterns. Improve code you're touching
       the way a good developer would, but don't restructure things outside your task.
 
+    ## Code Parsimony
+
+    Before writing implementation code, invoke `superpowers:code-parsimony` and
+    apply its ladder: does it need to exist (YAGNI) → reuse existing code → stdlib
+    → native platform feature → already-installed dependency → one line → minimal.
+    Write the fewest lines that fully solve the task. (You skip the session
+    bootstrap as a subagent, so invoke this skill explicitly — it will not
+    auto-trigger.)
+
     ## When You're in Over Your Head
 
     It is always OK to stop and say "this is too hard for me." Bad work is worse than

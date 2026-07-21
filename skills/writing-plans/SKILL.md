@@ -11,6 +11,8 @@ Write implementation plans for an engineer who has not seen this codebase or thi
 
 **Announce at start:** "I'm using the writing-plans skill to create the implementation plan."
 
+**Before decomposing:** invoke `superpowers:code-parsimony` and apply its ladder to task scope — plan the fewest tasks and steps that fully deliver the spec, and write each step's code toward reuse → stdlib → native → installed dep → one line before reaching for new code. This is not optional description-matching; invoke it now.
+
 **Context:** If working in an isolated worktree, it should have been created via the `superpowers:using-git-worktrees` skill at execution time.
 
 **Save plans to:** `docs/superpowers/plans/YYYY-MM-DD-<feature-name>.md`

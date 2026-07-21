@@ -190,6 +190,10 @@ step's code is written first and run first. Watching it fail is a step,
 not a formality — a test that passes before the implementation exists is
 a finding about the test.
 
+Before implementing, invoke `superpowers:code-parsimony` and apply its
+ladder to the code you write: the fewest lines and steps that fully
+satisfy the task.
+
 Every step that runs a command has an `Expected:` line. Run the command,
 read its output, and compare. Three outcomes:
 
