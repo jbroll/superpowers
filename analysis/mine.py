@@ -21,7 +21,12 @@ SKILL_PHASE = {
     "superpowers:executing-plans": "execute",
     "superpowers:test-driven-development": "execute",
 }
-PHASES = ("other", "spec", "plan", "execute")
+PHASES = ("other", "spec", "plan", "execute", "replan")
+# "replan" = a DELIBERATE re-invocation of a planning skill (brainstorming /
+# writing-plans) after building began — a planning-failure signal. Routine doc
+# edits during the build loop (checking off tasks, re-reading the spec) are NOT
+# replan; tool metadata can't distinguish those from a redesign, so we require the
+# explicit planning-skill call as the high-precision signal.
 _SUBTOK = re.compile(r"subagent_tokens:\s*(\d+)")
 
 
@@ -147,6 +152,7 @@ def attribute_phases_by_activity(records, prices):
     attribute_phases. Pure."""
     out = {ph: _bucket() for ph in PHASES}
     phase = "other"
+    state = "pre"       # pre -> planned (saw spec/plan) -> building (execute after planning)
     model = None
     seen = set()
     for o in records:
@@ -155,8 +161,25 @@ def attribute_phases_by_activity(records, prices):
             model = msg["model"]
         blocks = msg.get("content") or []
         vote = classify_turn(blocks)
-        if vote:
+        planning_skill = any(
+            isinstance(c, dict) and c.get("type") == "tool_use"
+            and c.get("name") == "Skill"
+            and str((c.get("input") or {}).get("skill", "")) in (SPEC_SKILL, PLAN_SKILL)
+            for c in blocks)
+        if state == "building":
+            if planning_skill:
+                phase = "replan"       # deliberately re-opened planning mid-build
+            elif vote is not None:
+                phase = "execute"      # any tool work during build, incl. doc bookkeeping
+            # vote None -> carry current phase
+        elif vote == "execute":
+            phase = "execute"
+            if state == "planned":
+                state = "building"     # real execution began (after planning)
+        elif vote in ("spec", "plan"):
             phase = vote
+            state = "planned"
+        # vote None -> carry current phase (adjacent-turn inheritance)
         for c in blocks:
             if not isinstance(c, dict):
                 continue

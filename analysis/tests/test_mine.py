@@ -126,6 +126,31 @@ def test_activity_attribution_beats_sticky_skill():
     assert old["plan"]["output"] == 600 and old["execute"]["output"] == 0
 
 
+def _skill_turn(name, o=0, id=None, rid=None):
+    return {"requestId": rid, "message": {"model": "m", "id": id,
+            "content": [_tu("Skill", skill=name)],
+            "usage": {"input_tokens": 0, "output_tokens": o,
+                      "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}}}
+
+
+def test_replan_only_on_deliberate_planning_skill_mid_build():
+    records = [
+        skill("superpowers:writing-plans"),                 # planned (no usage)
+        _edit_turn("src/app.py", o=100, id="a", rid="1"),   # execute -> building
+        _skill_turn("superpowers:brainstorming", o=50, id="b", rid="2"),  # REPLAN (deliberate)
+        _edit_turn("docs/superpowers/plans/x.md", o=30, id="c", rid="3"),  # doc bookkeeping -> execute
+        _edit_turn("src/app.py", o=70, id="d", rid="4"),    # execute
+    ]
+    ph = attribute_phases_by_activity(records, PRICES)
+    assert ph["replan"]["output"] == 50, ph["replan"]
+    assert ph["execute"]["output"] == 200, ph["execute"]   # 100 + 30(bookkeeping) + 70
+    assert ph["plan"]["output"] == 0, ph["plan"]
+    # planning BEFORE execution is still plan, not replan
+    pre = attribute_phases_by_activity(
+        [_edit_turn("docs/superpowers/plans/x.md", o=40, id="p", rid="9")], PRICES)
+    assert pre["plan"]["output"] == 40 and pre["replan"]["output"] == 0
+
+
 def test_resolve_prices_date_effective():
     dated = {"m": [
         {"effective": "2026-01-01", "input": 10.0},
