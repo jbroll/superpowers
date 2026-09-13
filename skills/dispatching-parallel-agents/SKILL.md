@@ -62,16 +62,20 @@ Each agent gets:
 - **Clear goal:** Make these tests pass
 - **Constraints:** Don't change other code
 - **Expected output:** Summary of what you found and fixed
+- **Model:** the least-powerful tier that fits its job — `haiku` for mechanical / read-and-report,
+  `sonnet` for integration / review / debugging, `opus` for design or subtle correctness / security.
+  **Pass `model` explicitly on every dispatch** — the platform takes a model parameter directly; an
+  omitted model inherits your session's, usually the most expensive.
 
 ### 3. Dispatch in Parallel
 
 Issue all three subagent dispatches in the same response — they run in parallel:
 
 ```text
-Subagent (general-purpose): "Fix agent-tool-abort.test.ts failures"
-Subagent (general-purpose): "Fix batch-completion-behavior.test.ts failures"
-Subagent (general-purpose): "Fix tool-approval-race-conditions.test.ts failures"
-# All three run concurrently.
+Subagent (general-purpose, model=haiku): "Fix agent-tool-abort.test.ts failures"
+Subagent (general-purpose, model=haiku): "Fix batch-completion-behavior.test.ts failures"
+Subagent (general-purpose, model=sonnet): "Fix tool-approval-race-conditions.test.ts failures"
+# All three run concurrently. Model set per task, never inherited.
 ```
 
 Multiple dispatch calls in one response = parallel execution. One per response = sequential.
