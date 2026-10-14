@@ -1,6 +1,6 @@
 ---
 name: executing-plans
-description: Use when executing an implementation plan in the current session as the implementer yourself — your human partner chose inline execution, or no subagent tool is available
+description: Use when executing an implementation plan in the current session as the implementer yourself because no subagent tool is available
 ---
 
 # Executing Plans
@@ -44,8 +44,9 @@ those, stop and ask.
 
 ## When to Use
 
-- You have a plan from superpowers:writing-plans and your human partner
-  chose inline execution at the handoff.
+- You have a plan from superpowers:writing-plans and no subagent tool is
+  available (the handoff routes to superpowers:subagent-driven-development
+  whenever subagents exist).
 - Your harness has no subagent tool (see the per-platform references in
   `../using-superpowers/references/`). Never fabricate a dispatch; run
   the plan here.
@@ -55,7 +56,8 @@ those, stop and ask.
 A fully specified plan makes inline execution transcription plus testing:
 it runs well on a mid-tier session model, and the one place the most
 capable model earns its cost is the final review, which this skill
-dispatches separately. Tell your human partner so when they choose inline.
+dispatches separately. Inline runs only when no subagent tool exists;
+say so when falling back.
 
 Prefer superpowers:subagent-driven-development when your human partner
 wants a review gate on every task, or when the plan is long enough that
@@ -312,7 +314,7 @@ Use superpowers:finishing-a-development-branch.
 | "I'll run the full suite at the end instead of per step" | Per-step runs are how you learn which step broke it. The end-of-task run is the contract, not a substitute. |
 | "The plan is wrong here, I'll just do the right thing" | Do the right thing and ledger the ruling. Unledgered deviation is a decision made in secret. |
 | "I'll write the ledger lines after a few tasks" | Compaction does not wait for a convenient moment. One line per task, in the same message as the commit. |
-| "Let me check in before the next task" | They chose inline to spend less. Progress prompts spend their time instead. Only the four stops stop you. |
+| "Let me check in before the next task" | Inline runs only where no subagent tool exists. Progress prompts spend their time instead. Only the four stops stop you. |
 | "I read my own diff carefully; the final reviewer is redundant" | Same author, same blind spots. The reviewer is the only fresh context this run buys. |
 | "Tests should pass, the change was trivial" | "Should" is not evidence. The contract requires the command and its output. |
 | "Subagents are slow and expensive, I'll skip the final review too" | Inline already removed the per-task reviewers. One review of the whole branch is the floor, not the ceiling. |
