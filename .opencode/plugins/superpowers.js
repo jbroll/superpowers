@@ -77,7 +77,16 @@ const extractAndStripFrontmatter = (content) => {
 export const V1_MAPPING = `**Tool Mapping for OpenCode:**
 When skills request actions, substitute OpenCode equivalents:
 - Create or update todos → \`todowrite\`
-- \`Subagent (general-purpose):\` → \`task\` with \`subagent_type: "general"\`
+- \`Subagent (general-purpose):\` → \`task\` with the \`subagent_type\` matching the task:
+  - Code implementation (TDD) → \`subagent_type: "implementer"\`
+  - Spec document review → \`subagent_type: "spec-reviewer"\`
+  - Implementation plan review → \`subagent_type: "plan-reviewer"\`
+  - Per-task diff review → \`subagent_type: "task-reviewer"\`
+  - Whole-branch final review → \`subagent_type: "final-reviewer"\`
+  - Repo context gathering / dossier → \`subagent_type: "dossier-builder"\`
+  - Web search / research / looking up docs → \`subagent_type: "websearch"\`
+  - General research / other → \`subagent_type: "general"\`
+  - Codebase exploration → \`subagent_type: "explore"\`
 - Invoke a skill → OpenCode's native \`skill\` tool
 - Read files → \`read\`
 - Create, edit, or delete files → \`apply_patch\`
