@@ -55,7 +55,8 @@ const result = {
   secondBootstrapParts: countBootstrapParts(secondOutput),
   staleMentionMapping: bootstrapText(firstOutput).includes('@mention'),
   staleTaskMapping: bootstrapText(firstOutput).includes('`Task` tool with subagents'),
-  mapsSubagentToTask: bootstrapText(firstOutput).includes('`task` with `subagent_type: "general"`'),
+  mapsSubagentToTask: bootstrapText(firstOutput).includes('`task` with the `subagent_type` matching the task'),
+  mapsWebResearchToWebsearch: bootstrapText(firstOutput).includes('`subagent_type: "websearch"`'),
   mapsMutationToApplyPatch: bootstrapText(firstOutput).includes('`apply_patch`'),
   firstReadCount: afterFirst.readCount,
   secondReadCount: afterSecond.readCount,
@@ -140,6 +141,9 @@ function assertPresentBootstrap(result) {
   if (!result.mapsSubagentToTask) {
     failures.push('expected OpenCode bootstrap to map general-purpose subagents to task with subagent_type');
   }
+  if (!result.mapsWebResearchToWebsearch) {
+    failures.push('expected OpenCode bootstrap to map web research to task with subagent_type websearch');
+  }
   if (!result.mapsMutationToApplyPatch) {
     failures.push('expected OpenCode bootstrap to map file mutation to apply_patch');
   }
@@ -172,7 +176,7 @@ function assertMappingConstants(mod) {
     failures.push('expected plugin to export V1_MAPPING and V2_MAPPING string constants');
     return failures;
   }
-  for (const needle of ['`todowrite`', '`task` with `subagent_type: "general"`', '`apply_patch`', '`bash`']) {
+  for (const needle of ['`todowrite`', '`task` with the `subagent_type` matching the task', '`subagent_type: "websearch"`', '`apply_patch`', '`bash`']) {
     if (!mod.V1_MAPPING.includes(needle)) {
       failures.push(`expected V1_MAPPING to keep the 1.18.x tool name ${needle}`);
     }
