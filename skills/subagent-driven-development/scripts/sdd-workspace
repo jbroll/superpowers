@@ -45,13 +45,18 @@ slug=$(basename "$plan" .md)
 # Physical path, spelled the way pwd -P spells the plan path below: on Git
 # Bash, rev-parse prints C:/Users/... while pwd prints /c/Users/..., and the
 # repo-relative marker check needs both in the same form.
-root=$(CDPATH='' cd -- "$(git rev-parse --show-toplevel)" && pwd -P)
+#
+# The repo is derived from PLAN_FILE, never from cwd: a controller invoking
+# from any directory (including this skill's own) must land in the plan's
+# repo. A missing git repo for the plan is a hard error, not a silent
+# workspace in whatever repo happens to own the cwd.
+plan_dir=$(CDPATH='' cd -- "$(dirname "$plan")" && pwd -P)
+root=$(CDPATH='' cd -- "$(git -C "$plan_dir" rev-parse --show-toplevel)" && pwd -P)
 base="$root/.superpowers/sdd"
 
 # Normalize the plan path (physical directory, so relative/absolute/../
 # spellings of one plan compare equal) and express it as the marker value:
 # repo-relative when the plan lives under the repo root, absolute otherwise.
-plan_dir=$(CDPATH='' cd -- "$(dirname "$plan")" && pwd -P)
 plan_abs="$plan_dir/$(basename "$plan")"
 case "$plan_abs" in
   "$root"/*) plan_id=${plan_abs#"$root"/} ;;

@@ -114,6 +114,11 @@ a ledger file, not only in todos.
   `bash scripts/sdd-workspace PLAN_FILE` — it prints the plan's git-ignored
   directory (under `<repo-root>/.superpowers/sdd/`), home to
   every artifact for THIS plan: ledger, briefs, reports, review packages.
+  Run every `scripts/` command below by absolute path with your shell's
+  working directory set to the plan's worktree (the repo PLAN_FILE lives
+  in) — never the skill's directory. The `scripts/` paths in this skill are
+  package locators, not a working directory; running from the skill's
+  directory silently creates the workspace in the wrong repo.
   Another plan's directory is never yours to read or write.
 - Check for this plan's ledger at `<workspace>/progress.md`. If one exists,
   read [references/resuming.md](references/resuming.md) before anything
@@ -242,7 +247,7 @@ Template: [implementer-prompt.md](implementer-prompt.md)
 
 Implementer subagents report one of four statuses. Handle each appropriately:
 
-**DONE:** Generate the review package (`bash scripts/review-package PLAN_FILE BASE HEAD`, from this skill's directory — it prints the unique file path it wrote; BASE is the commit you recorded before dispatching the implementer — never `HEAD~1`, which silently drops all but the last commit of a multi-commit task), then dispatch the task reviewer with the printed path.
+**DONE:** Generate the review package (`bash <skill-dir>/scripts/review-package PLAN_FILE BASE HEAD` with the shell's working directory set to the plan's worktree — it prints the unique file path it wrote; BASE is the commit you recorded before dispatching the implementer — never `HEAD~1`, which silently drops all but the last commit of a multi-commit task), then dispatch the task reviewer with the printed path.
 
 **Any other status** (DONE_WITH_CONCERNS, NEEDS_CONTEXT, BLOCKED): read
 [references/handling-reports.md](references/handling-reports.md) and follow
