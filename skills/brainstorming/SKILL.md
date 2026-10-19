@@ -42,9 +42,9 @@ Your first message is three things, in this order:
    files, tools, or numbers. If they asked a direct question ("are we
    ready?", "can it do X?"), answer it here from what you found.
 3. One question that only they can answer and whose answer changes what
-   gets built. Anchor it in something you found: "The basic eval prompts
-   score 8/8 on every run, so they can't show whether a change helped.
-   Should the loop judge changes on harder prompts instead?" A question
+   gets built. Anchor it in something you found: "`config.json` already
+   holds per-user settings, but nothing reads it at startup. Should the
+   new feature load from it, or keep its own store?" A question
    with no grounding ("What's the moment you wished this existed?") gets
    a generic answer.
 
