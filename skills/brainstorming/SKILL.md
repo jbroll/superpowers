@@ -167,17 +167,60 @@ could plan from without going back to your human partner. Cover:
 - the parts of the how they decided, as they decided them
 - what's left to the builder
 
+**Software specs** use a canonical section set, each fact in exactly one
+section: **Goal**, **Scope / Non-goals**, **Data model**, **Behavior
+contract** (what each operation does), **Failure contract** (errors, codes,
+paths), **Binding constraints** (repo-enforced, measured), **Testing** (a
+named list, one entry per behavior, failure, or edge, by reference:
+"unknown input → error", not a re-description). State each requirement,
+failure mode, and constraint once, in its owner section; later sections
+reference it. No "Success criteria" or "Acceptance criteria" section: the
+contracts and Binding constraints are the acceptance criteria.
+
+Write it compact the first time; length is the outcome of stating each
+fact once. Cover the target state and how you know it's reached, not how
+to get there. Build sequence, commit order, and task breakdown belong to
+writing-plans, which re-derives them under code-parsimony.
+
+**Measure before you write.** For each file the work will touch, read it
+and record: current size against any cap the repo enforces, the exact
+values the design depends on (names, ports, headers, limits), and which
+gates run on commit. Record measured numbers, not estimates. These land in
+Binding constraints.
+
 **Where it goes:** in a software repo,
 `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`, committed.
 Otherwise, ask. Your human partner's preferences override both.
 
-**Cut padding:** every sentence must earn its place.
+**Self-review:** after writing, a quick structural pass, with prose-cutting
+only where a section reads padded:
 
-- **Boilerplate test** (before writing): if a competent builder would get this right without being told, don't write it.
-- **Sentence test** (after writing): if removing a sentence changes nothing the reader learns, delete it. Apply hardest to the first and last sentence of each paragraph.
-- **Delete on sight:** "Note that", "It is important to", "This section describes/covers", "In order to X" → "To X", filler adverbs (generally/typically/usually/often), setup sentences ("There are three reasons"), closing restatements ("This is why X matters"), transition sentences carrying no information, any sentence restating a heading.
-- **Completeness test:** a section is done when two different phrasings would produce identical behavior, not when it is long or short.
-- Prefer active voice with a named agent, and specific over general ("retries three times with 500 ms backoff", not "retries as needed").
+1. **Placeholder scan:** any "TBD", "TODO", or vague requirement? Fix it.
+2. **Consistency and scope:** sections agree; focused enough for a single
+   implementation plan (else decompose).
+3. **Sequencing scan:** did a build order, commit sequence, or
+   phase-by-phase task breakdown creep in? Cut it. Keep target design,
+   move maps, and acceptance criteria.
+4. **Ambiguity check:** could any requirement be read two ways? Pick one
+   and make it explicit.
+5. **Single source and required sections:** a software spec carries a
+   non-empty *Binding constraints* section and a *Failure contract*
+   section, both exempt from cutting. A fact stated in a second section
+   becomes a reference or goes.
+6. **Cut padding, only if a section reads padded:**
+   - **Boilerplate test:** if a competent builder *new to this repo* would
+     get it right from general knowledge, don't write it.
+     Project-specific facts (enforced caps, path conventions, landing
+     mechanics, exact values) stay.
+   - **Sentence test:** if removing a sentence changes nothing the reader
+     learns, delete it. Apply hardest to the first and last sentence of
+     each paragraph.
+   - **Delete on sight:** "Note that", "It is important to", "This section
+     describes/covers", "In order to X" → "To X", filler adverbs, setup
+     sentences, closing restatements, any sentence restating a heading.
+   - **Never cut:** constraints the repo enforces, ownership and landing
+     mechanics, failure contracts, and exact values. Parsimony trims
+     restatement and reasoning, never a fact's single canonical statement.
 
 **Builder check:** dispatch a fresh subagent with
 `builder-check-prompt.md` in this directory. When you tell your human

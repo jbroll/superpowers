@@ -198,10 +198,10 @@ After writing the complete plan, look at the spec with fresh eyes and check the 
 **5. Proportion:** Compare the plan's length to the spec's. A plan several times longer than the spec it implements is a transcript of the program, not a plan. If code blocks are most of the document, replace bodies with signatures, test names and assertions, and check that each step is still unambiguous.
 
 **6. Cut padding:** The prose around code and commands must earn its place.
-- **Boilerplate test** (before writing): if a competent engineer would get this right without being told, don't write it.
+- **Boilerplate test** (before writing): if a competent engineer *new to this repo* would get this right from general engineering knowledge, don't write it. Project-specific facts — enforced caps, path conventions, landing mechanics, exact values, and where a value comes from and when it is available — fail this test and stay.
 - **Sentence test** (after writing): if removing a sentence changes nothing the engineer learns, delete it. Apply hardest to the first and last sentence of each paragraph.
 - **Delete on sight:** "Note that", "It is important to", "This section describes/covers", "In order to X" → "To X", filler adverbs (generally/typically/usually/often), setup sentences, closing restatements, transition sentences carrying no information, any sentence restating a heading.
-- Never cut what makes a step unambiguous: file paths, signatures, test assertions, exact commands, expected output.
+- Never cut what makes a step unambiguous: file paths, signatures, test assertions, exact commands, expected output, and the Global Constraints block (repo, branch/worktree, landing command, version floors, enforced caps). Parsimony trims reasoning, never measurements.
 
 If you find issues, fix them inline. No need to re-review — just fix and move on. If you find a spec requirement with no task, add the task.
 

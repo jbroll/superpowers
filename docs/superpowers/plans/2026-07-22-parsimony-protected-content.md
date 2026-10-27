@@ -139,7 +139,22 @@ Run:
 cd /home/john/src/superpowers
 scripts/padding-lint.sh skills/brainstorming/SKILL.md skills/writing-plans/SKILL.md
 ```
-Expected: `total padding flags: 0` and exit 0. If a flag fires on text this plan supplied, report it rather than rewording — the supplied text is the spec's approved wording.
+Expected: `total padding flags: 4`, exit 1 — **unchanged from the pre-edit baseline**. The four
+are pre-existing and none are in text this plan supplies: `brainstorming` "often" (the
+well-bounded-units bullet) and its `Delete on sight` line; `writing-plans` "usually" (the
+model-tier paragraph) and its `Delete on sight` line. The two `Delete on sight` hits are
+structural false positives — those lines quote the filler adverbs they ban.
+
+The gate must not regress: compare against the baseline rather than against zero.
+
+```bash
+cd /home/john/src/superpowers
+git show HEAD:skills/brainstorming/SKILL.md > /tmp/base-brainstorming.md
+git show HEAD:skills/writing-plans/SKILL.md > /tmp/base-writing-plans.md
+scripts/padding-lint.sh /tmp/base-brainstorming.md /tmp/base-writing-plans.md | tail -1
+```
+Expected: `total padding flags: 4` — the same count. A higher post-edit count means this plan's
+text introduced padding; report it rather than rewording, since the wording is spec-approved.
 
 - [ ] **Step 11: Commit**
 
